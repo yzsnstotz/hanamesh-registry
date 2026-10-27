@@ -215,6 +215,9 @@
     },
     {
       "if": {
+        "required": [
+          "status"
+        ],
         "properties": {
           "status": {
             "const": "delisted"
@@ -225,6 +228,25 @@
         "required": [
           "delistReason"
         ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "const": "listed"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "delistReason"
+          ]
+        }
       }
     }
   ]

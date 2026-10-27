@@ -206,7 +206,10 @@ test('agent plugin found in marketplace passes', async () => {
   const e = entry({ channels: ['dsh', 'claude'], agentPlugins: [agent()] });
   const net = { ...verifiedNet, raw: { ...verifiedNet.raw, [marketPath()]: { name: 'acme', plugins: [{ name: 'widget', source: { source: 'github', repo: 'acme/widget' } }] } } };
   const r = await run(e, { net });
-  assert.equal(r.verdict, 'pass');
+  assert.equal(r.verdict, 'escalate');
+  assert.deepEqual(r.findings.map((f) => f.rule), ['R4'], 'only the reachability escalation');
+  const unchanged = await run(e, { net, previous: e });
+  assert.equal(unchanged.verdict, 'pass', 'unchanged agent channel on an existing entry');
 });
 
 test('agent plugin missing from marketplace escalates', async () => {
@@ -230,11 +233,11 @@ const marketWith = (plugin) => ({ raw: { [marketPath()]: { name: 'acme', plugins
 
 test('agent-only entry verified by its own marketplace', async () => {
   const local = await run(agentOnly({ repository: 'https://github.com/acme/market', sourceUrl: 'https://github.com/acme/market' }), { net: marketWith({ source: './plugins/widget' }) });
-  assert.equal(local.verdict, 'pass');
+  assert.equal(local.verdict, 'escalate');
   assert.equal(local.label, 'source-verified');
   const sameOwner = await run(agentOnly(), { net: marketWith({ source: { source: 'url', url: 'https://github.com/acme/widget.git' } }) });
-  assert.equal(sameOwner.verdict, 'pass');
   assert.equal(sameOwner.label, 'source-verified');
+  assert.deepEqual(sameOwner.findings.map((f) => f.rule), ['R4']);
 });
 
 test('agent-only entry cannot borrow a famous repository through its own marketplace', async () => {
@@ -264,7 +267,7 @@ test('agent-only plugin missing from marketplace escalates', async () => {
 
 test('one-way repository match is unverified', async () => {
   const net = { ...verifiedNet, raw: { 'acme/widget/HEAD/package.json': { name: '@acme/something-else' } } };
-  const r = await run(entry(), { net });
+  const r = await run(entry({ sourceUrl: 'https://www.npmjs.com/package/@acme/widget' }), { net });
   assert.equal(r.verdict, 'pass');
   assert.equal(r.label, 'unverified');
 });
@@ -282,7 +285,7 @@ test('install script escalates with quoted, truncated text', async () => {
 // R7
 test('author review is ignored with warn, even when malformed', async () => {
   for (const review of [{ reviewedAt: '2026-10-28T00:00:00Z', rulesVersion: '1', label: 'source-verified', notes: 'trust me' }, { label: 'source-verified', extra: true }]) {
-    const r = await run(entry({ review }), { net: { npm: { '@acme/widget/1.0.0': npmMeta({ repository: undefined }) } } });
+    const r = await run(entry({ review, sourceUrl: 'https://www.npmjs.com/package/@acme/widget' }), { net: { npm: { '@acme/widget/1.0.0': npmMeta({ repository: undefined }) } } });
     assert.ok(rules(r, 'warn').includes('R7'));
     assert.equal(r.label, 'unverified');
     assert.equal(r.verdict, 'pass');
@@ -333,4 +336,54 @@ test('githubRepoOf accepts npm and marketplace forms', () => {
   for (const v of [null, 'https://gitlab.com/acme/widget', 'https://github.com/acme', 'file:../widget', 'https://github.com/acme/..', 'acme/.', 'acme/.git']) {
     assert.equal(githubRepoOf(v), null, JSON.stringify(v));
   }
+});
+
+test('version moving back on an existing entry escalates', async () => {
+  const net = { ...verifiedNet, npm: { '@acme/widget/0.9.0': npmMeta({ version: '0.9.0' }) } };
+  const r = await run(entry({ version: '0.9.0' }), { previous: entry(), net });
+  assert.equal(r.verdict, 'escalate');
+  assert.ok(r.findings.some((f) => f.rule === 'R3' && /moved back/.test(f.message)));
+});
+
+test('delistReason on a listed entry is a schema reject, changing it on a delisted one escalates', async () => {
+  const listed = await run(entry({ delistReason: 'Scam, see https://phish.example' }), { previous: entry() });
+  assert.equal(listed.verdict, 'reject');
+  const delisted = entry({ status: 'delisted', delistReason: 'spam' });
+  const r = await run({ ...delisted, delistReason: 'Scam, see https://phish.example' }, { previous: delisted });
+  assert.ok(r.findings.some((f) => f.rule === 'R3' && /delistReason/.test(f.message)));
+});
+
+test('publisher name must name the repository owner or npm scope', async () => {
+  const r = await run(entry({ publisher: { name: 'Anthropic' } }));
+  assert.equal(r.verdict, 'escalate');
+  assert.ok(rules(r).includes('R9'));
+  assert.equal((await run(entry({ publisher: { name: 'Acme Inc.' } }))).verdict, 'pass');
+});
+
+test('reserved namespace check ignores case', async () => {
+  const e = entry({ id: '@HANAMESH/widget', npm: '@HANAMESH/widget', publisher: { name: 'hanamesh' } });
+  const r = await run(e, { net: { ...verifiedNet, npm: { '@HANAMESH/widget/1.0.0': npmMeta({ name: '@HANAMESH/widget' }) } } });
+  assert.ok(r.findings.some((f) => f.rule === 'R9' && /reserved/.test(f.message)));
+});
+
+test('unverified new entry must link to its npm page', async () => {
+  const r = await run(entry(), { net: { npm: { '@acme/widget/1.0.0': npmMeta({ repository: undefined }) } } });
+  assert.equal(r.label, 'unverified');
+  assert.equal(r.verdict, 'escalate');
+  assert.ok(r.findings.some((f) => f.rule === 'R9' && /npm package page/.test(f.message)));
+});
+
+test('re-check of an unchanged entry escalates when the label drifts', async () => {
+  const stored = entry({ review: { reviewedAt: '2026-10-28T00:00:00Z', rulesVersion: '1', label: 'source-verified', notes: '' } });
+  const net = { ...verifiedNet, raw: { 'acme/widget/HEAD/package.json': { name: 'renamed' } } };
+  const r = await run(stored, { previous: stored, net });
+  assert.equal(r.verdict, 'escalate');
+  assert.ok(r.findings.some((f) => f.rule === 'R5' && /label changed/.test(f.message)));
+});
+
+test('compareSemver orders prereleases before releases', async () => {
+  const { compareSemver } = await import('../tools/check-entry.mjs');
+  const order = ['0.1.0-rc.2', '0.1.0-rc.10', '0.1.0', '0.1.1-alpha', '0.1.1-alpha.1', '0.1.1-beta', '0.1.1', '1.0.0'];
+  for (let i = 1; i < order.length; i += 1) assert.ok(compareSemver(order[i - 1], order[i]) < 0, `${order[i - 1]} < ${order[i]}`);
+  assert.equal(compareSemver('1.2.3', '1.2.3'), 0);
 });

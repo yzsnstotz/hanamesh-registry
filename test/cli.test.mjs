@@ -33,7 +33,7 @@ test('cli reads the path argument with and without --base, from a path with spac
 
 test('cli rejects bad arguments with exit 2', () => {
   const { dir } = sandbox({ 'acme__bad.json': { id: 'acme/bad' } });
-  for (const args of [['plugins/acme__bad.json', '--base=main'], ['plugins/acme__bad.json', '--base'], ['plugins/acme__bad.json', '--bogus'], ['other/acme__bad.json'], ['plugins/sub/acme__bad.json'], []]) {
+  for (const args of [['plugins/acme__bad.json', '--head', 'main'], ['plugins/acme__bad.json', '--base=main'], ['plugins/acme__bad.json', '--base'], ['plugins/acme__bad.json', '--bogus'], ['other/acme__bad.json'], ['plugins/sub/acme__bad.json'], []]) {
     const r = cli(dir, args);
     assert.equal(r.status, 2, args.join(' '));
     assert.equal(r.stdout, '');
@@ -58,7 +58,16 @@ test('cli treats invalid JSON as an R1 reject', () => {
   const { dir, git } = sandbox({});
   writeFileSync(join(dir, 'plugins', 'x.json'), '{not json');
   git('add', '-A'); git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'bad');
-  const r = cli(dir, ['plugins/x.json', '--head', 'main', '--json']);
+  const r = cli(dir, ['plugins/x.json', '--head', 'main', '--base', 'main', '--json']);
   assert.equal(r.status, 1);
   assert.equal(JSON.parse(r.stdout).findings[0].rule, 'R1');
+});
+
+test('scenario runner prints a result from a path with spaces', () => {
+  const { dir } = sandbox({});
+  const file = join(dir, 'scenario.json');
+  writeFileSync(file, JSON.stringify({ base: [], head: { path: 'plugins/acme__bad.json', entry: { id: 'acme/bad' } } }));
+  const r = spawnSync(process.execPath, [join(dir, 'tools/check-scenario.mjs'), file], { cwd: dir, encoding: 'utf8' });
+  assert.equal(r.status, 1, r.stderr);
+  assert.equal(JSON.parse(r.stdout).verdict, 'reject');
 });

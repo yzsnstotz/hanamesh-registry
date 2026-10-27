@@ -16,13 +16,13 @@
         "zh": "测试。"
       },
       "publisher": {
-        "name": "Fixture"
+        "name": "Babel"
       },
       "status": "listed",
       "npm": "@babel/core",
       "version": "7.26.0",
       "repository": "https://github.com/babel/babel",
-      "sourceUrl": "https://github.com/babel/babel"
+      "sourceUrl": "https://www.npmjs.com/package/@babel/core"
     }
   },
   "expect": {

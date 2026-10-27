@@ -17,12 +17,32 @@ const MARKETPLACE_PATH = { claude: '.claude-plugin/marketplace.json', codex: '.a
 const RESERVED_PREFIXES = ['yzsnstotz/', '@hanamesh/', '@ai-workbench/'];
 const RESERVED_CATEGORIES = new Set(['hanamesh-plugin', 'hanamesh-app']);
 // Fields an existing entry may change without owner review (status/delistReason are R8).
-const FREE_FIELDS = new Set(['version', 'latestVersion', 'review', 'status', 'delistReason']);
+// version may only move forward; review is R7; status (with delistReason) is R8.
+const FREE_FIELDS = new Set(['version', 'latestVersion', 'review', 'status']);
 
 class NetworkError extends Error {}
 
 // Untrusted text (from npm or a marketplace) quoted and truncated before it reaches comments or prompts.
-const q = (value) => JSON.stringify(String(value ?? null).slice(0, 200));
+const q = (value) => (value == null ? 'null' : JSON.stringify(String(value).slice(0, 200)));
+const norm = (value) => String(value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+// Semver precedence (no build metadata; the schema forbids it). Returns <0, 0, >0.
+export function compareSemver(a, b) {
+  const split = (v) => { const [core, pre] = v.split(/-(.*)/s); return [core.split('.').map(Number), pre === undefined ? null : pre.split('.')]; };
+  const [ca, pa] = split(a);
+  const [cb, pb] = split(b);
+  for (let i = 0; i < 3; i += 1) if (ca[i] !== cb[i]) return ca[i] - cb[i];
+  if (pa === null || pb === null) return (pa === null) - (pb === null);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+    if (pa[i] === undefined) return -1;
+    if (pb[i] === undefined) return 1;
+    const na = /^\d+$/.test(pa[i]), nb = /^\d+$/.test(pb[i]);
+    if (na && nb && Number(pa[i]) !== Number(pb[i])) return Number(pa[i]) - Number(pb[i]);
+    if (na !== nb) return na ? -1 : 1;
+    if (pa[i] !== pb[i]) return pa[i] < pb[i] ? -1 : 1;
+  }
+  return 0;
+}
 const owner = (repo) => repo?.split('/')[0] ?? null;
 
 async function getJson(fetchImpl, url) {
@@ -107,6 +127,7 @@ export async function checkEntry({ path, entry, previous = null, others = [], fe
     const keys = new Set([...Object.keys(previous), ...Object.keys(entry)]);
     const changed = [...keys].filter((k) => !FREE_FIELDS.has(k) && !isDeepStrictEqual(previous[k], entry[k]));
     if (changed.length) escalate('R3', `existing entry changed: ${changed.join(', ')}`);
+    if (previous.version && entry.version && compareSemver(entry.version, previous.version) < 0) escalate('R3', `version moved back ${previous.version} -> ${entry.version}`);
   }
 
   const entryRepo = entry.repository ? githubRepoOf(entry.repository) : null;
@@ -115,12 +136,14 @@ export async function checkEntry({ path, entry, previous = null, others = [], fe
   if (!previous) {
     if (entry.npm && entry.id !== entry.npm) escalate('R9', `new entries use the npm name as id (expected ${q(entry.npm)})`);
     if (!entry.npm && owner(entry.id.toLowerCase()) !== owner(entryRepo)) escalate('R9', 'agent-only id must start with the repository owner');
-    if (RESERVED_PREFIXES.some((p) => entry.id.startsWith(p) || entry.npm?.startsWith(p))) escalate('R9', 'reserved HanaMesh namespace');
+    if (RESERVED_PREFIXES.some((p) => entry.id.toLowerCase().startsWith(p) || entry.npm?.toLowerCase().startsWith(p))) escalate('R9', 'reserved HanaMesh namespace');
     const reserved = entry.categories.filter((c) => RESERVED_CATEGORIES.has(c));
     if (reserved.length) escalate('R9', `reserved categories: ${reserved.join(', ')}`);
     const allowed = [entryRepo && `https://github.com/${entryRepo}`, entry.npm && `https://www.npmjs.com/package/${entry.npm}`].filter(Boolean);
     const onAllowed = (url) => allowed.some((a) => url.toLowerCase() === a.toLowerCase() || url.toLowerCase().startsWith(`${a.toLowerCase()}/`) || url.toLowerCase().startsWith(`${a.toLowerCase()}#`));
     if (!onAllowed(entry.sourceUrl)) escalate('R9', 'sourceUrl must point at the repository or the npm package page');
+    const claimants = [owner(entryRepo), entry.npm?.startsWith('@') ? entry.npm.slice(1).split('/')[0] : null].filter(Boolean).map(norm);
+    if (!claimants.some((c) => c && norm(entry.publisher.name).includes(c))) escalate('R9', `publisher.name ${q(entry.publisher.name)} does not name the repository owner or npm scope`);
     if (entry.publisher.url && !(entryRepo && entry.publisher.url.toLowerCase().replace(/\/$/, '') === `https://github.com/${owner(entryRepo)}`)) escalate('R9', 'publisher.url must be the repository owner on GitHub');
   }
 
@@ -137,6 +160,10 @@ export async function checkEntry({ path, entry, previous = null, others = [], fe
     const expectedUrl = `https://github.com/${a.marketplaceRepository}`.toLowerCase();
     if (![expectedUrl, `${expectedUrl}.git`].includes(a.marketplaceUrl.toLowerCase())) reject('R4', `marketplaceUrl must be https://github.com/${a.marketplaceRepository}`);
   }
+
+  // R4 the checker cannot prove a ref belongs to the marketplace's own branches (fork networks share
+  // objects), so new or changed agent channels go to the owner until the indexer checks reachability.
+  if (agentPlugins.length && !isDeepStrictEqual(agentPlugins, previous?.agentPlugins)) escalate('R4', 'agent channel added or changed: ref reachability is confirmed by the owner this phase');
 
   // R4 marketplace lookup; feeds R5 for agent-only entries. true = verified, false = contradicts, null = undecidable.
   const agentMatches = [];
@@ -206,6 +233,9 @@ export async function checkEntry({ path, entry, previous = null, others = [], fe
     add('R5', 'info', entryRepo ? `npm repository is ${q(npmRepo)}, entry says ${entryRepo}` : 'no repository declared');
   }
 
+  if (!previous && label !== 'source-verified' && !entry.sourceUrl.toLowerCase().startsWith(`https://www.npmjs.com/package/${entry.npm.toLowerCase()}`)) escalate('R9', 'unverified entries link to their npm package page');
+  if (previous?.review?.label && previous.review.label !== label && isDeepStrictEqual({ ...previous, review: undefined }, { ...entry, review: undefined })) escalate('R5', `label changed ${previous.review.label} -> ${label}`);
+
   // R3 npm uniqueness, decided after the label: a verified newcomer against an unverified holder goes to the owner
   const holder = others.find((o) => o.entry?.npm === entry.npm);
   if (holder) {
@@ -258,6 +288,7 @@ export function parseArgs(argv) {
     else opts.path = a;
   }
   if (!opts.path || !/^plugins\/[^/]+\.json$/.test(opts.path)) throw new Error('path must be plugins/<file>.json, relative to the repository root');
+  if (opts.head && !opts.base) throw new Error('--head needs --base');
   return opts;
 }
 

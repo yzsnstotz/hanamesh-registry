@@ -12,15 +12,15 @@ Run on every PR by `tools/check-entry.mjs`. Network access goes only to `registr
 
 | Rule | Check | If it fails |
 |---|---|---|
-| R1 | One PR changes one file, `plugins/<file>.json`; the entry matches the schema (strict semver `version`); file name equals the `id` (first `/` → `__`); `id` not used by another file (case-insensitive) | Closed with the reason |
+| R1 | One PR changes one file, `plugins/<file>.json` (checked by the reviewer from the PR file list); the entry matches the schema (strict semver `version`); file name equals the `id` (first `/` → `__`); `id` not used by another file (case-insensitive) | Closed with the reason |
 | R2 | `npm@version` exists on the public npm registry; the returned name and version equal the entry exactly (case-sensitive, no trimming) | Closed; npm unreachable → owner |
-| R3 | `npm` not already listed. On an existing entry, anything other than `version`/`latestVersion` changes | Closed / sent to the owner (also when a verified newcomer meets an unverified holder of the same npm name) |
-| R4 | `channels` is valid. `dsh` and `hanamesh-client` need `npm`; `claude`/`codex` need an `agentPlugins` item whose `marketplaceUrl` is `https://github.com/<marketplaceRepository>` and whose plugin exists in that marketplace at the given commit | Closed / sent to the owner when the marketplace cannot be read, the plugin is missing, or its source does not match |
+| R3 | `npm` not already listed. On an existing entry, anything other than a forward `version`/`latestVersion` change | Closed / sent to the owner (also when a verified newcomer meets an unverified holder of the same npm name) |
+| R4 | `channels` is valid. `dsh` and `hanamesh-client` need `npm`; `claude`/`codex` need an `agentPlugins` item whose `marketplaceUrl` is `https://github.com/<marketplaceRepository>` and whose plugin exists in that marketplace at the given commit | Closed / sent to the owner when the marketplace cannot be read, the plugin is missing, or its source does not match. In this phase every new or changed Claude/Codex channel is also confirmed by the owner. |
 | R5 | Repository check (decides the label, see below) | Agent-only entries that contradict their marketplace, or use an archive source, are closed |
 | R6 | npm `preinstall` / `install` / `postinstall` scripts | Not rejected; sent to the owner |
 | R7 | `review` written by the author | Ignored |
 | R8 | `status` changed (`listed` ↔ `delisted`) | Sent to the owner |
-| R9 | New entries: `id` equals the npm name (agent-only: starts with the repository owner); no reserved HanaMesh namespace or category; `sourceUrl` on the repository or npm package page; `publisher.url` is the repository owner on GitHub | Sent to the owner |
+| R9 | New entries: `id` equals the npm name (agent-only: starts with the repository owner); no reserved HanaMesh namespace or category; `publisher.name` names the repository owner or npm scope; `sourceUrl` on the repository or npm package page (unverified entries: the npm package page); `publisher.url` is the repository owner on GitHub | Sent to the owner |
 
 Deleting an entry file is not how delisting works; such PRs are sent to the owner.
 Anything else the reviewer is not sure about goes to the owner instead of being merged.
