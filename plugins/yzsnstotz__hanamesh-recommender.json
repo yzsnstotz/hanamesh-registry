@@ -1,0 +1,30 @@
+{
+  "id": "yzsnstotz/hanamesh-recommender",
+  "name": "HanaMesh Recommender",
+  "repository": "https://github.com/yzsnstotz/hanamesh-recommender",
+  "npm": "@hanamesh/recommender",
+  "version": "0.1.1-rc.3",
+  "channels": [
+    "dsh",
+    "hanamesh-client"
+  ],
+  "categories": [
+    "hanamesh-plugin"
+  ],
+  "description": {
+    "en": "Describe a task, get a ranked Hana recommendation with install, details and alternatives; only an allowlisted local context leaves the machine.",
+    "zh": "说出任务，得到带安装/详情/其他选择的 Hana 推荐；只上送白名单本机环境。"
+  },
+  "publisher": {
+    "name": "HanaMesh",
+    "url": "https://hanamesh.com"
+  },
+  "sourceUrl": "https://github.com/yzsnstotz/hanamesh-recommender#readme",
+  "status": "listed",
+  "review": {
+    "reviewedAt": "2026-10-27T20:10:01Z",
+    "rulesVersion": "1",
+    "label": "source-verified",
+    "notes": "initial migration (0.1.1-rc.3 adds repository)"
+  }
+}

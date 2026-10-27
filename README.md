@@ -42,5 +42,5 @@ Plugins installed through Claude or Codex marketplaces add `"claude"`/`"codex"` 
 
 ## Migration notes / 迁移说明
 
-The first entries were migrated from HanaMesh's previous built-in list. `hanamesh-recommender` joins once its source repository is public. `hanamesh-app-vibe-trading` will be handled in the next phase.
-首批条目由 HanaMesh 原内置清单迁入。`hanamesh-recommender` 待其源码仓库公开后加入；`hanamesh-app-vibe-trading` 下一阶段处理。
+The first entries were migrated from HanaMesh's previous built-in list. `hanamesh-app-vibe-trading` will be handled in the next phase.
+首批条目由 HanaMesh 原内置清单迁入；`hanamesh-app-vibe-trading` 下一阶段处理。
