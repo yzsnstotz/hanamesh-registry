@@ -155,7 +155,7 @@ export function readWorkingEntries(dir = 'plugins') {
 
 async function main(argv) {
   const baseIdx = argv.indexOf('--base');
-  const path = argv.find((a, i) => !a.startsWith('--') && i !== baseIdx + 1);
+  const path = argv.find((a, i) => !a.startsWith('--') && (baseIdx < 0 || i !== baseIdx + 1));
   if (!path) { console.error('usage: check-entry.mjs plugins/<file>.json [--base <git-ref>] --json'); process.exit(2); }
   const entry = JSON.parse(readFileSync(path, 'utf8'));
   const rel = `plugins/${basename(path)}`;
