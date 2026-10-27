@@ -8,21 +8,23 @@ Open source is **not** required. What changes is the label: entries whose source
 
 ## Basic checks / 基础校对
 
-Run on every PR by `tools/check-entry.mjs`. Network access goes only to `registry.npmjs.org` and `raw.githubusercontent.com`.
+Run on every PR by `tools/check-entry.mjs`. Network access goes only to `registry.npmjs.org` and `raw.githubusercontent.com`; redirects are not followed and responses over 2 MB are refused (both count as "unreachable").
 
 | Rule | Check | If it fails |
 |---|---|---|
-| R1 | Entry matches the schema; file name equals the `id` (first `/` → `__`); `id` not used by another file | Closed with the reason |
-| R2 | `npm@version` exists on the public npm registry and the returned name equals `npm` exactly (case-sensitive, no trimming) | Closed |
-| R3 | `npm` not already listed. Changing `id` or `npm` of an existing entry | Closed / sent to the owner |
-| R4 | `channels` is valid. `dsh` and `hanamesh-client` need `npm`; `claude`/`codex` need an `agentPlugins` item, and that plugin must exist in the marketplace at the given commit | Closed / sent to the owner when the marketplace cannot be read or the plugin is missing |
-| R5 | Two-way repository check (decides the label only, see below) | — |
+| R1 | One PR changes one file, `plugins/<file>.json`; the entry matches the schema (strict semver `version`); file name equals the `id` (first `/` → `__`); `id` not used by another file (case-insensitive) | Closed with the reason |
+| R2 | `npm@version` exists on the public npm registry; the returned name and version equal the entry exactly (case-sensitive, no trimming) | Closed; npm unreachable → owner |
+| R3 | `npm` not already listed. On an existing entry, anything other than `version`/`latestVersion` changes | Closed / sent to the owner (also when a verified newcomer meets an unverified holder of the same npm name) |
+| R4 | `channels` is valid. `dsh` and `hanamesh-client` need `npm`; `claude`/`codex` need an `agentPlugins` item whose `marketplaceUrl` is `https://github.com/<marketplaceRepository>` and whose plugin exists in that marketplace at the given commit | Closed / sent to the owner when the marketplace cannot be read, the plugin is missing, or its source does not match |
+| R5 | Repository check (decides the label, see below) | Agent-only entries that contradict their marketplace, or use an archive source, are closed |
 | R6 | npm `preinstall` / `install` / `postinstall` scripts | Not rejected; sent to the owner |
 | R7 | `review` written by the author | Ignored |
 | R8 | `status` changed (`listed` ↔ `delisted`) | Sent to the owner |
+| R9 | New entries: `id` equals the npm name (agent-only: starts with the repository owner); no reserved HanaMesh namespace or category; `sourceUrl` on the repository or npm package page; `publisher.url` is the repository owner on GitHub | Sent to the owner |
 
-Anything else the reviewer is not sure about (name conflicts, suspicious scripts, channels that do not match) goes to the owner instead of being merged.
-其他拿不准的情况（重名、可疑脚本、渠道核不上）一律交给 owner，不自动合并。
+Deleting an entry file is not how delisting works; such PRs are sent to the owner.
+Anything else the reviewer is not sure about goes to the owner instead of being merged.
+其他拿不准的情况一律交给 owner，不自动合并。
 
 Each run also re-checks the npm metadata of listed entries.
 
@@ -30,7 +32,7 @@ Each run also re-checks the npm metadata of listed entries.
 
 | Label | Shown as | How it is decided |
 |---|---|---|
-| `source-verified` | Source verified · 源码已核验 | The npm package's `repository` points at the entry `repository`, **and** that repository's root `package.json` has `name` equal to the package name. Agent-only entries (no npm): every declared marketplace lists the plugin with its source in the entry `repository`. |
+| `source-verified` | Source verified · 源码已核验 | The npm package's `repository` points at the entry `repository`, **and** that repository's root `package.json` has `name` equal to the package name. Agent-only entries (no npm): every declared marketplace lists the plugin, and its source is the entry `repository`, which must be the marketplace repository itself or a repository with the same GitHub owner. Archive sources are never verified. |
 | `unverified` | Unverified · 未核验 | Everything else. The repository link is not shown or stored. |
 | `partial-source`, `closed-source-reviewed`, `closed-source-publisher-verified`, `package-reviewed` | Unverified · 未核验 | Reserved, assigned manually in later phases. |
 

@@ -22,8 +22,9 @@ export function validateShape(entry) {
 export function githubRepoOf(value) {
   const raw = typeof value === 'string' ? value : typeof value?.url === 'string' ? value.url : null;
   if (!raw) return null;
-  const m = /^(?:github:)?([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?$/.exec(raw)
-    ?? /^(?:git\+)?(?:https?|git|ssh):\/\/(?:git@)?github\.com[/:]([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?(?:#.*)?$/.exec(raw)
-    ?? /^git@github\.com:([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?$/.exec(raw);
+  const name = '((?!(?:\\.\\.?|\\.git)(?:\\.git)?$)[A-Za-z0-9._-]+?)';
+  const m = new RegExp(`^(?:github:)?([A-Za-z0-9-]+)/${name}(?:\\.git)?$`).exec(raw)
+    ?? new RegExp(`^(?:git\\+)?(?:https?|git|ssh)://(?:git@)?github\\.com[/:]([A-Za-z0-9-]+)/${name}(?:\\.git)?/?(?:#.*)?$`).exec(raw)
+    ?? new RegExp(`^git@github\\.com:([A-Za-z0-9-]+)/${name}(?:\\.git)?$`).exec(raw);
   return m ? `${m[1]}/${m[2]}`.toLowerCase() : null;
 }

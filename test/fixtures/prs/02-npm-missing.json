@@ -1,0 +1,31 @@
+{
+  "base": [],
+  "head": {
+    "path": "plugins/@hanamesh-intake-fixture__does-not-exist.json",
+    "entry": {
+      "id": "@hanamesh-intake-fixture/does-not-exist",
+      "name": "Fixture",
+      "channels": [
+        "dsh"
+      ],
+      "categories": [
+        "tools"
+      ],
+      "description": {
+        "en": "Fixture.",
+        "zh": "测试。"
+      },
+      "publisher": {
+        "name": "Fixture"
+      },
+      "status": "listed",
+      "npm": "@hanamesh-intake-fixture/does-not-exist",
+      "version": "1.0.0",
+      "sourceUrl": "https://www.npmjs.com/package/@hanamesh-intake-fixture/does-not-exist"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "label": "unverified"
+  }
+}

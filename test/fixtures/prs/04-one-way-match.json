@@ -1,0 +1,32 @@
+{
+  "base": [],
+  "head": {
+    "path": "plugins/@babel__core.json",
+    "entry": {
+      "id": "@babel/core",
+      "name": "Fixture",
+      "channels": [
+        "dsh"
+      ],
+      "categories": [
+        "tools"
+      ],
+      "description": {
+        "en": "Fixture.",
+        "zh": "测试。"
+      },
+      "publisher": {
+        "name": "Fixture"
+      },
+      "status": "listed",
+      "npm": "@babel/core",
+      "version": "7.26.0",
+      "repository": "https://github.com/babel/babel",
+      "sourceUrl": "https://github.com/babel/babel"
+    }
+  },
+  "expect": {
+    "verdict": "pass",
+    "label": "unverified"
+  }
+}

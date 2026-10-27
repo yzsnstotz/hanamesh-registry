@@ -5,7 +5,7 @@ HanaMesh 目录的公开收录清单。一个可安装的插件对应一个文�
 
 ## Submit a plugin / 提交插件
 
-1. Fork this repository and add **one** file `plugins/<file>.json`. The file name is the entry `id` with the first `/` replaced by `__`, for example `@acme/widget` → `plugins/@acme__widget.json`.
+1. Fork this repository and add **one** file `plugins/<file>.json`. The `id` is the npm package name (agent-only plugins: `<repository owner>/<name>`). The file name is the `id` with the first `/` replaced by `__`, for example `@acme/widget` → `plugins/@acme__widget.json`.
 2. The file must match [`schema/plugin.schema.json`](schema/plugin.schema.json). Do not fill in `review`; the reviewer writes it.
 3. Run the checks locally (Node 24): `npm install && node tools/check-entry.mjs plugins/<file>.json`.
 4. Open a pull request. One PR changes one entry file.
@@ -18,15 +18,15 @@ A daily review pass checks every open PR. What it checks, what the labels mean a
 
 ```json
 {
-  "id": "acme/widget",
+  "id": "@acme/widget",
   "name": "Widget",
   "repository": "https://github.com/acme/widget",
   "npm": "@acme/widget",
   "version": "1.0.0",
   "channels": ["dsh", "hanamesh-client"],
-  "categories": ["hanamesh-plugin"],
+  "categories": ["tools"],
   "description": { "en": "What it does.", "zh": "它做什么。" },
-  "publisher": { "name": "Acme", "url": "https://acme.example" },
+  "publisher": { "name": "Acme", "url": "https://github.com/acme" },
   "sourceUrl": "https://github.com/acme/widget#readme",
   "status": "listed"
 }

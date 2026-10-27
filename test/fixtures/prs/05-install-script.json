@@ -1,0 +1,32 @@
+{
+  "base": [],
+  "head": {
+    "path": "plugins/esbuild.json",
+    "entry": {
+      "id": "esbuild",
+      "name": "Fixture",
+      "channels": [
+        "dsh"
+      ],
+      "categories": [
+        "tools"
+      ],
+      "description": {
+        "en": "Fixture.",
+        "zh": "测试。"
+      },
+      "publisher": {
+        "name": "Fixture"
+      },
+      "status": "listed",
+      "npm": "esbuild",
+      "version": "0.24.0",
+      "repository": "https://github.com/evanw/esbuild",
+      "sourceUrl": "https://github.com/evanw/esbuild"
+    }
+  },
+  "expect": {
+    "verdict": "escalate",
+    "label": "unverified"
+  }
+}

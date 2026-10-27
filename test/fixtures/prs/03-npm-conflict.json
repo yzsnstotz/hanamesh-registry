@@ -1,0 +1,65 @@
+{
+  "base": [
+    {
+      "path": "plugins/yzsnstotz__hanamesh-core.json",
+      "entry": {
+        "id": "yzsnstotz/hanamesh-core",
+        "name": "HanaMesh Core",
+        "repository": "https://github.com/yzsnstotz/hanamesh-core",
+        "npm": "@hanamesh/core",
+        "version": "0.3.24",
+        "channels": [
+          "dsh",
+          "hanamesh-client"
+        ],
+        "categories": [
+          "hanamesh-plugin"
+        ],
+        "description": {
+          "en": "Core HanaMesh interface services.",
+          "zh": "HanaMesh 核心界面服务。"
+        },
+        "publisher": {
+          "name": "HanaMesh",
+          "url": "https://hanamesh.com"
+        },
+        "sourceUrl": "https://github.com/yzsnstotz/hanamesh-core#readme",
+        "status": "listed",
+        "review": {
+          "reviewedAt": "2026-10-27T19:20:25Z",
+          "rulesVersion": "1",
+          "label": "source-verified",
+          "notes": "initial migration"
+        }
+      }
+    }
+  ],
+  "head": {
+    "path": "plugins/@hanamesh__core.json",
+    "entry": {
+      "id": "@hanamesh/core",
+      "name": "Fixture",
+      "channels": [
+        "dsh"
+      ],
+      "categories": [
+        "tools"
+      ],
+      "description": {
+        "en": "Fixture.",
+        "zh": "测试。"
+      },
+      "publisher": {
+        "name": "Fixture"
+      },
+      "status": "listed",
+      "npm": "@hanamesh/core",
+      "version": "0.3.24",
+      "sourceUrl": "https://www.npmjs.com/package/@hanamesh/core"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "label": "unverified"
+  }
+}

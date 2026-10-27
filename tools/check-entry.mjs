@@ -1,28 +1,55 @@
 #!/usr/bin/env node
-// Deterministic basic checks R1-R8 for one registry entry. Network goes only to
-// registry.npmjs.org and raw.githubusercontent.com (no GitHub REST quota).
+// Deterministic basic checks R1-R9 for one registry entry. Network goes only to
+// registry.npmjs.org and raw.githubusercontent.com (no GitHub REST quota), never follows
+// redirects, and reads at most MAX_BYTES per response.
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { readFileSync, readdirSync, realpathSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { fileNameForId, githubRepoOf, validateShape } from './entry.mjs';
 
 const TIMEOUT_MS = 20_000;
+const MAX_BYTES = 2 * 1024 * 1024;
+const ALLOWED_HOSTS = new Set(['registry.npmjs.org', 'raw.githubusercontent.com']);
 const MARKETPLACE_PATH = { claude: '.claude-plugin/marketplace.json', codex: '.agents/plugins/marketplace.json' };
+// Namespaces and categories that only HanaMesh's own entries use; new entries using them go to the owner.
+const RESERVED_PREFIXES = ['yzsnstotz/', '@hanamesh/', '@ai-workbench/'];
+const RESERVED_CATEGORIES = new Set(['hanamesh-plugin', 'hanamesh-app']);
+// Fields an existing entry may change without owner review (status/delistReason are R8).
+const FREE_FIELDS = new Set(['version', 'latestVersion', 'review', 'status', 'delistReason']);
 
 class NetworkError extends Error {}
 
+// Untrusted text (from npm or a marketplace) quoted and truncated before it reaches comments or prompts.
+const q = (value) => JSON.stringify(String(value ?? null).slice(0, 200));
+const owner = (repo) => repo?.split('/')[0] ?? null;
+
 async function getJson(fetchImpl, url) {
+  if (!ALLOWED_HOSTS.has(new URL(url).hostname)) throw new Error(`host not allowed: ${url}`);
   let res;
   try {
-    res = await fetchImpl(url, { signal: AbortSignal.timeout(TIMEOUT_MS), redirect: 'follow', headers: { accept: 'application/json' } });
+    res = await fetchImpl(url, { signal: AbortSignal.timeout(TIMEOUT_MS), redirect: 'error', headers: { accept: 'application/json' } });
   } catch (e) {
     throw new NetworkError(`${url}: ${e?.cause?.message ?? e?.message ?? e}`);
   }
   if (res.status === 404) return null;
   if (!res.ok) throw new NetworkError(`${url}: HTTP ${res.status}`);
+  if (Number(res.headers.get('content-length')) > MAX_BYTES) throw new NetworkError(`${url}: response over ${MAX_BYTES} bytes`);
+  const chunks = [];
+  let size = 0;
   try {
-    return await res.json();
+    for await (const chunk of res.body ?? []) {
+      size += chunk.byteLength;
+      if (size > MAX_BYTES) throw new NetworkError(`${url}: response over ${MAX_BYTES} bytes`);
+      chunks.push(chunk);
+    }
+  } catch (e) {
+    if (e instanceof NetworkError) throw e;
+    throw new NetworkError(`${url}: ${e?.message ?? e}`);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
   } catch {
     throw new NetworkError(`${url}: invalid JSON`);
   }
@@ -33,13 +60,17 @@ function npmUrl(name, version) {
   return `https://registry.npmjs.org/${encoded}/${encodeURIComponent(version)}`;
 }
 
-function marketplaceSourceRepo(plugin, marketplaceRepository) {
+// Where a marketplace says the plugin's source lives, and whether that claim can be trusted.
+// A marketplace can only vouch for its own repository or one under the same GitHub owner.
+function marketplaceSource(plugin, marketplaceRepository) {
+  const market = marketplaceRepository.toLowerCase();
   const s = plugin.source;
-  if (typeof s === 'string' || s?.source === 'local') return marketplaceRepository.toLowerCase();
-  if (s?.source === 'github') return githubRepoOf(s.repo);
-  if (s?.source === 'url' || s?.source === 'git-subdir') return githubRepoOf(s.url);
-  if (s?.source === 'archive') return githubRepoOf(plugin.repository);
-  return null;
+  if (typeof s === 'string' || s?.source === 'local') return { repo: market, trusted: true };
+  if (s?.source === 'archive') return { repo: null, trusted: false, why: 'archive sources cannot be verified' };
+  const repo = s?.source === 'github' ? githubRepoOf(s.repo) : s?.source === 'url' || s?.source === 'git-subdir' ? githubRepoOf(s.url) : null;
+  if (!repo) return { repo: null, trusted: false, why: 'source is not a GitHub repository' };
+  if (owner(repo) !== owner(market)) return { repo, trusted: false, why: `marketplace ${market} does not share an owner with ${repo}` };
+  return { repo, trusted: true };
 }
 
 export async function checkEntry({ path, entry, previous = null, others = [], fetch: fetchImpl = globalThis.fetch }) {
@@ -54,22 +85,44 @@ export async function checkEntry({ path, entry, previous = null, others = [], fe
     findings,
   });
 
-  // R1 shape, file name, unique id
+  // R7 review is written only by the review skill; it is ignored, never validated.
+  if (entry && typeof entry === 'object' && entry.review !== undefined) {
+    if (!isDeepStrictEqual(entry.review, previous?.review)) add('R7', 'warn', 'review is written by the reviewer; the submitted value is ignored');
+    entry = { ...entry };
+    delete entry.review;
+  }
+
+  // R1 shape, path, unique id
   const shapeErrors = validateShape(entry);
   for (const message of shapeErrors) reject('R1', message);
   if (shapeErrors.length) return finish();
-  if (basename(path) !== fileNameForId(entry.id) || !path.startsWith('plugins/')) reject('R1', `file must be plugins/${fileNameForId(entry.id)}`);
-  if (others.some((o) => o.entry?.id === entry.id)) reject('R1', `id ${entry.id} is already used by another file`);
-
-  // R7 review is written only by the review skill
-  if (entry.review !== undefined && !isDeepStrictEqual(entry.review, previous?.review)) add('R7', 'warn', 'review is written by the reviewer; the submitted value is ignored');
+  if (path !== `plugins/${fileNameForId(entry.id)}`) reject('R1', `file must be plugins/${fileNameForId(entry.id)}`);
+  if (others.some((o) => o.entry?.id?.toLowerCase() === entry.id.toLowerCase())) reject('R1', `id ${entry.id} is already used by another file`);
 
   // R8 listing status changes go to the owner
   if (previous && previous.status !== entry.status) escalate('R8', `status changed ${previous.status} -> ${entry.status}`);
 
-  // R3 npm uniqueness; identity changes on an existing entry
-  if (entry.npm && others.some((o) => o.entry?.npm === entry.npm)) reject('R3', `npm ${entry.npm} is already listed`);
-  if (previous && (previous.id !== entry.id || previous.npm !== entry.npm)) escalate('R3', 'id or npm changed on an existing entry');
+  // R3 an existing entry may only move its version without owner review
+  if (previous) {
+    const keys = new Set([...Object.keys(previous), ...Object.keys(entry)]);
+    const changed = [...keys].filter((k) => !FREE_FIELDS.has(k) && !isDeepStrictEqual(previous[k], entry[k]));
+    if (changed.length) escalate('R3', `existing entry changed: ${changed.join(', ')}`);
+  }
+
+  const entryRepo = entry.repository ? githubRepoOf(entry.repository) : null;
+
+  // R9 identity and presentation of a new entry
+  if (!previous) {
+    if (entry.npm && entry.id !== entry.npm) escalate('R9', `new entries use the npm name as id (expected ${q(entry.npm)})`);
+    if (!entry.npm && owner(entry.id.toLowerCase()) !== owner(entryRepo)) escalate('R9', 'agent-only id must start with the repository owner');
+    if (RESERVED_PREFIXES.some((p) => entry.id.startsWith(p) || entry.npm?.startsWith(p))) escalate('R9', 'reserved HanaMesh namespace');
+    const reserved = entry.categories.filter((c) => RESERVED_CATEGORIES.has(c));
+    if (reserved.length) escalate('R9', `reserved categories: ${reserved.join(', ')}`);
+    const allowed = [entryRepo && `https://github.com/${entryRepo}`, entry.npm && `https://www.npmjs.com/package/${entry.npm}`].filter(Boolean);
+    const onAllowed = (url) => allowed.some((a) => url.toLowerCase() === a.toLowerCase() || url.toLowerCase().startsWith(`${a.toLowerCase()}/`) || url.toLowerCase().startsWith(`${a.toLowerCase()}#`));
+    if (!onAllowed(entry.sourceUrl)) escalate('R9', 'sourceUrl must point at the repository or the npm package page');
+    if (entry.publisher.url && !(entryRepo && entry.publisher.url.toLowerCase().replace(/\/$/, '') === `https://github.com/${owner(entryRepo)}`)) escalate('R9', 'publisher.url must be the repository owner on GitHub');
+  }
 
   // R4 channel constraints
   const channels = new Set(entry.channels);
@@ -79,91 +132,165 @@ export async function checkEntry({ path, entry, previous = null, others = [], fe
   for (const ch of ['claude', 'codex']) {
     if (channels.has(ch) && !agentPlugins.some((a) => a.channel === ch)) reject('R4', `${ch} channel requires an agentPlugins item`);
   }
-  for (const a of agentPlugins) if (!channels.has(a.channel)) reject('R4', `agentPlugins item for undeclared channel ${a.channel}`);
+  for (const a of agentPlugins) {
+    if (!channels.has(a.channel)) reject('R4', `agentPlugins item for undeclared channel ${a.channel}`);
+    const expectedUrl = `https://github.com/${a.marketplaceRepository}`.toLowerCase();
+    if (![expectedUrl, `${expectedUrl}.git`].includes(a.marketplaceUrl.toLowerCase())) reject('R4', `marketplaceUrl must be https://github.com/${a.marketplaceRepository}`);
+  }
 
-  const entryRepo = entry.repository ? githubRepoOf(entry.repository) : null;
-
-  // R4 marketplace lookup (also feeds R5 for agent-only entries)
-  const agentRepoMatches = [];
+  // R4 marketplace lookup; feeds R5 for agent-only entries. true = verified, false = contradicts, null = undecidable.
+  const agentMatches = [];
   for (const a of agentPlugins) {
     const url = `https://raw.githubusercontent.com/${a.marketplaceRepository}/${a.ref}/${MARKETPLACE_PATH[a.channel]}`;
+    let market;
     try {
-      const market = await getJson(fetchImpl, url);
-      const plugin = Array.isArray(market?.plugins) ? market.plugins.find((p) => p?.name === a.pluginName) : undefined;
-      if (!plugin) { escalate('R4', `${a.channel}: plugin ${a.pluginName} not found in ${a.marketplaceRepository}@${a.ref}`); agentRepoMatches.push(false); continue; }
-      const sourceRepo = marketplaceSourceRepo(plugin, a.marketplaceRepository);
-      const matches = sourceRepo !== null && sourceRepo === entryRepo;
-      agentRepoMatches.push(matches);
-      if (!matches && entry.npm) add('R4', 'warn', `${a.channel}: marketplace source ${sourceRepo ?? 'unknown'} differs from repository; this channel will not be attached`);
+      market = await getJson(fetchImpl, url);
     } catch (e) {
       if (!(e instanceof NetworkError)) throw e;
-      escalate('R4', `${a.channel}: marketplace unreachable (${e.message})`);
-      agentRepoMatches.push(null);
+      escalate('R4', `${a.channel}: marketplace unreachable (${q(e.message)})`);
+      agentMatches.push(null);
+      continue;
     }
+    const plugin = Array.isArray(market?.plugins) ? market.plugins.find((p) => p?.name === a.pluginName) : undefined;
+    if (!plugin) { escalate('R4', `${a.channel}: plugin ${q(a.pluginName)} not found in ${a.marketplaceRepository}@${a.ref}`); agentMatches.push(null); continue; }
+    const source = marketplaceSource(plugin, a.marketplaceRepository);
+    if (!source.trusted) {
+      if (source.why === 'archive sources cannot be verified') { reject('R5', `${a.channel}: ${source.why}`); agentMatches.push(false); }
+      else { escalate('R4', `${a.channel}: ${source.why}`); agentMatches.push(null); }
+      continue;
+    }
+    if (source.repo !== entryRepo) {
+      if (entry.npm) escalate('R4', `${a.channel}: marketplace source ${q(source.repo)} differs from repository`);
+      else reject('R5', `agent-only entries must be source-verified: marketplace source ${q(source.repo)} differs from repository`);
+      agentMatches.push(false);
+      continue;
+    }
+    agentMatches.push(true);
   }
 
   if (!entry.npm) {
-    // R5 agent-only: every declared marketplace must point at the entry repository
-    if (agentRepoMatches.length && agentRepoMatches.every((m) => m === true)) label = 'source-verified';
-    else if (agentRepoMatches.some((m) => m === false)) reject('R5', 'agent-only entries must be source-verified: marketplace source repository differs from repository');
+    if (agentMatches.length && agentMatches.every((m) => m === true)) label = 'source-verified';
     return finish();
   }
 
-  // R2 npm package and version exist with the exact name
+  // R2 npm package and exact version exist with the exact name
   let meta;
   try {
     meta = await getJson(fetchImpl, npmUrl(entry.npm, entry.version));
   } catch (e) {
     if (!(e instanceof NetworkError)) throw e;
-    escalate('R2', `npm unreachable (${e.message})`);
+    escalate('R2', `npm unreachable (${q(e.message)})`);
     return finish();
   }
   if (!meta || typeof meta !== 'object') { reject('R2', `${entry.npm}@${entry.version} not found on npm`); return finish(); }
-  if (meta.name !== entry.npm) { reject('R2', `npm returned name ${JSON.stringify(meta.name)}, expected ${JSON.stringify(entry.npm)}`); return finish(); }
+  if (meta.name !== entry.npm) { reject('R2', `npm returned name ${q(meta.name)}, expected ${q(entry.npm)}`); return finish(); }
+  if (meta.version !== entry.version) { reject('R2', `npm returned version ${q(meta.version)}, expected ${q(entry.version)}`); return finish(); }
 
   // R6 install scripts
   const scripts = meta.scripts && typeof meta.scripts === 'object' ? meta.scripts : {};
   const hooks = ['preinstall', 'install', 'postinstall'].filter((k) => typeof scripts[k] === 'string');
-  if (hooks.length) escalate('R6', `install scripts: ${hooks.map((k) => `${k}=${JSON.stringify(scripts[k])}`).join(', ')}`, 'info');
+  if (hooks.length) escalate('R6', `install scripts: ${hooks.map((k) => `${k}=${q(scripts[k])}`).join(', ')}`, 'info');
 
-  // R5 two-way repository check decides the label only
+  // R5 two-way repository check decides the label
   const npmRepo = githubRepoOf(meta.repository);
   if (entryRepo && npmRepo === entryRepo) {
     try {
       const pkg = await getJson(fetchImpl, `https://raw.githubusercontent.com/${entryRepo}/HEAD/package.json`);
       if (pkg?.name === entry.npm) label = 'source-verified';
-      else add('R5', 'info', `repository package.json name is ${JSON.stringify(pkg?.name ?? null)}, expected ${JSON.stringify(entry.npm)}`);
+      else add('R5', 'info', `repository package.json name is ${q(pkg?.name)}, expected ${q(entry.npm)}`);
     } catch (e) {
       if (!(e instanceof NetworkError)) throw e;
-      escalate('R5', `repository unreachable (${e.message})`);
+      escalate('R5', `repository unreachable (${q(e.message)})`);
     }
   } else {
-    add('R5', 'info', entryRepo ? `npm repository is ${npmRepo ?? 'missing'}, entry says ${entryRepo}` : 'no repository declared');
+    add('R5', 'info', entryRepo ? `npm repository is ${q(npmRepo)}, entry says ${entryRepo}` : 'no repository declared');
+  }
+
+  // R3 npm uniqueness, decided after the label: a verified newcomer against an unverified holder goes to the owner
+  const holder = others.find((o) => o.entry?.npm === entry.npm);
+  if (holder) {
+    if (label === 'source-verified' && holder.entry.review?.label !== 'source-verified') escalate('R3', `npm ${entry.npm} is held by unverified ${holder.path}`);
+    else reject('R3', `npm ${entry.npm} is already listed in ${holder.path}`);
   }
   return finish();
 }
 
-function readEntriesAt(ref) {
-  const git = (...args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  const names = git('ls-tree', '--name-only', `${ref}:plugins/`).split('\n').filter((n) => n.endsWith('.json'));
-  return names.map((n) => ({ path: `plugins/${n}`, entry: JSON.parse(git('show', `${ref}:plugins/${n}`)) }));
+const git = (...args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+
+// Files that do not parse are left out of the pool; they are rejected when checked themselves.
+function parsed(path, text) {
+  try {
+    return [{ path, entry: JSON.parse(text) }];
+  } catch {
+    return [];
+  }
+}
+
+export function readEntriesAt(ref) {
+  const names = git('ls-tree', '--name-only', `${ref}:plugins/`).split('\n').filter((n) => n.endsWith('.json')).sort();
+  return names.flatMap((n) => parsed(`plugins/${n}`, git('show', `${ref}:plugins/${n}`)));
 }
 
 export function readWorkingEntries(dir = 'plugins') {
-  return readdirSync(dir).filter((n) => n.endsWith('.json')).sort().map((n) => ({ path: `plugins/${n}`, entry: JSON.parse(readFileSync(join(dir, n), 'utf8')) }));
+  let names;
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  return names.filter((n) => n.endsWith('.json')).sort().flatMap((n) => parsed(`plugins/${n}`, readFileSync(join(dir, n), 'utf8')));
+}
+
+const USAGE = 'usage: check-entry.mjs plugins/<file>.json [--head <git-ref>] [--base <git-ref>] [--json]';
+
+export function parseArgs(argv) {
+  const opts = { path: null, head: null, base: null, json: false };
+  for (let i = 0; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (a === '--json') opts.json = true;
+    else if (a === '--head' || a === '--base') {
+      const v = argv[i + 1];
+      if (!v || v.startsWith('--')) throw new Error(`${a} needs a value`);
+      opts[a.slice(2)] = v;
+      i += 1;
+    } else if (a.startsWith('-')) throw new Error(`unknown option ${a}`);
+    else if (opts.path) throw new Error(`unexpected argument ${a}`);
+    else opts.path = a;
+  }
+  if (!opts.path || !/^plugins\/[^/]+\.json$/.test(opts.path)) throw new Error('path must be plugins/<file>.json, relative to the repository root');
+  return opts;
 }
 
 async function main(argv) {
-  const baseIdx = argv.indexOf('--base');
-  const path = argv.find((a, i) => !a.startsWith('--') && (baseIdx < 0 || i !== baseIdx + 1));
-  if (!path) { console.error('usage: check-entry.mjs plugins/<file>.json [--base <git-ref>] --json'); process.exit(2); }
-  const entry = JSON.parse(readFileSync(path, 'utf8'));
-  const rel = `plugins/${basename(path)}`;
-  const pool = baseIdx >= 0 ? readEntriesAt(argv[baseIdx + 1]) : readWorkingEntries();
-  const previous = baseIdx >= 0 ? pool.find((o) => o.path === rel)?.entry ?? null : null;
-  const result = await checkEntry({ path: rel, entry, previous, others: pool.filter((o) => o.path !== rel) });
-  console.log(JSON.stringify(result, null, argv.includes('--json') ? 0 : 2));
+  let opts;
+  try {
+    opts = parseArgs(argv);
+  } catch (e) {
+    console.error(`${e.message}\n${USAGE}`);
+    process.exit(2);
+  }
+  const text = opts.head ? git('show', `${opts.head}:${opts.path}`) : readFileSync(opts.path, 'utf8');
+  let entry;
+  try {
+    entry = JSON.parse(text);
+  } catch {
+    entry = null;
+  }
+  const pool = opts.base ? readEntriesAt(opts.base) : readWorkingEntries();
+  const previous = opts.base ? pool.find((o) => o.path === opts.path)?.entry ?? null : null;
+  const result = entry === null
+    ? { verdict: 'reject', label: 'unverified', findings: [{ rule: 'R1', level: 'error', message: 'file is not valid JSON', action: 'reject' }] }
+    : await checkEntry({ path: opts.path, entry, previous, others: pool.filter((o) => o.path !== opts.path) });
+  console.log(JSON.stringify(result, null, opts.json ? 0 : 2));
   process.exitCode = result.verdict === 'reject' ? 1 : 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) await main(process.argv.slice(2));
+export function isMain(metaUrl) {
+  try {
+    return realpathSync(fileURLToPath(metaUrl)) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+}
+
+if (isMain(import.meta.url)) await main(process.argv.slice(2));

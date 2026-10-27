@@ -4,69 +4,228 @@
   "title": "HanaMesh registry entry",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "name", "channels", "categories", "description", "publisher", "sourceUrl", "status"],
+  "required": [
+    "id",
+    "name",
+    "channels",
+    "categories",
+    "description",
+    "publisher",
+    "sourceUrl",
+    "status"
+  ],
   "properties": {
-    "id": { "type": "string", "maxLength": 214, "pattern": "^@?[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$" },
-    "name": { "type": "string", "minLength": 1, "maxLength": 100 },
-    "npm": { "type": "string", "minLength": 1, "maxLength": 214, "pattern": "^(@[^\\s/@]+/)?[^\\s/@]+$" },
-    "repository": { "type": "string", "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+$" },
-    "version": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^\\S+$" },
-    "latestVersion": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^\\S+$" },
+    "id": {
+      "type": "string",
+      "maxLength": 214,
+      "pattern": "^(?!.*__)(@?[A-Za-z0-9][A-Za-z0-9._-]*/)?[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "npm": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 214,
+      "pattern": "^(@[^\\s/@]+/)?[^\\s/@]+$"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^https://github\\.com/[A-Za-z0-9-]+/(?!\\.\\.?$)[A-Za-z0-9._-]+$"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-(0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)(\\.(0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*))*)?$"
+    },
+    "latestVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-(0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)(\\.(0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*))*)?$"
+    },
     "channels": {
-      "type": "array", "minItems": 1, "uniqueItems": true,
-      "items": { "enum": ["dsh", "hanamesh-client", "claude", "codex"] }
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "dsh",
+          "hanamesh-client",
+          "claude",
+          "codex"
+        ]
+      }
     },
     "agentPlugins": {
-      "type": "array", "minItems": 1,
+      "type": "array",
+      "minItems": 1,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["channel", "marketplaceRepository", "ref", "marketplaceUrl", "pluginName"],
+        "required": [
+          "channel",
+          "marketplaceRepository",
+          "ref",
+          "marketplaceUrl",
+          "pluginName"
+        ],
         "properties": {
-          "channel": { "enum": ["claude", "codex"] },
-          "marketplaceRepository": { "type": "string", "pattern": "^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$" },
-          "ref": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-          "marketplaceUrl": { "type": "string", "maxLength": 2048, "pattern": "^https://\\S+$" },
-          "pluginName": { "type": "string", "minLength": 1, "maxLength": 214 }
+          "channel": {
+            "enum": [
+              "claude",
+              "codex"
+            ]
+          },
+          "marketplaceRepository": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9-]+/(?!\\.\\.?$)[A-Za-z0-9._-]+$"
+          },
+          "ref": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "marketplaceUrl": {
+            "type": "string",
+            "maxLength": 2048,
+            "pattern": "^https://\\S+$"
+          },
+          "pluginName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 214
+          }
         }
       }
     },
-    "categories": { "type": "array", "maxItems": 10, "items": { "type": "string", "minLength": 1, "maxLength": 64 } },
+    "categories": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      }
+    },
     "description": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["en", "zh"],
+      "required": [
+        "en",
+        "zh"
+      ],
       "properties": {
-        "en": { "type": "string", "minLength": 1, "maxLength": 500 },
-        "zh": { "type": "string", "minLength": 1, "maxLength": 500 }
+        "en": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "zh": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
       }
     },
     "publisher": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "properties": {
-        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
-        "url": { "type": "string", "maxLength": 2048, "pattern": "^https://\\S+$" }
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "url": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^https://\\S+$"
+        }
       }
     },
-    "sourceUrl": { "type": "string", "maxLength": 2048, "pattern": "^https://\\S+$" },
-    "status": { "enum": ["listed", "delisted"] },
-    "delistReason": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "sourceUrl": {
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https://\\S+$"
+    },
+    "status": {
+      "enum": [
+        "listed",
+        "delisted"
+      ]
+    },
+    "delistReason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
     "review": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["reviewedAt", "rulesVersion", "label", "notes"],
+      "required": [
+        "reviewedAt",
+        "rulesVersion",
+        "label",
+        "notes"
+      ],
       "properties": {
-        "reviewedAt": { "type": "string", "format": "date-time" },
-        "rulesVersion": { "type": "string", "minLength": 1 },
-        "label": { "enum": ["source-verified", "unverified", "partial-source", "closed-source-reviewed", "closed-source-publisher-verified", "package-reviewed"] },
-        "notes": { "type": "string", "maxLength": 2000 }
+        "reviewedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "rulesVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "enum": [
+            "source-verified",
+            "unverified",
+            "partial-source",
+            "closed-source-reviewed",
+            "closed-source-publisher-verified",
+            "package-reviewed"
+          ]
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2000
+        }
       }
     }
   },
   "allOf": [
-    { "if": { "required": ["npm"] }, "then": { "required": ["version"] } },
-    { "if": { "properties": { "status": { "const": "delisted" } } }, "then": { "required": ["delistReason"] } }
+    {
+      "if": {
+        "required": [
+          "npm"
+        ]
+      },
+      "then": {
+        "required": [
+          "version"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "delisted"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "delistReason"
+        ]
+      }
+    }
   ]
 }

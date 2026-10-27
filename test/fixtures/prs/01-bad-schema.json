@@ -1,0 +1,14 @@
+{
+  "base": [],
+  "head": {
+    "path": "plugins/acme__bad.json",
+    "entry": {
+      "id": "acme/bad",
+      "name": "Bad"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "label": "unverified"
+  }
+}
