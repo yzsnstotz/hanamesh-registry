@@ -1,8 +1,11 @@
 {
   "name": "hanamesh-registry",
   "private": true,
+  "license": "MIT",
   "type": "module",
-  "engines": { "node": "24.13.1" },
+  "engines": {
+    "node": "24.13.1"
+  },
   "scripts": {
     "test": "node --test \"test/**/*.test.mjs\"",
     "check": "node tools/check-all.mjs"
