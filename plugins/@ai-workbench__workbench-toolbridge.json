@@ -1,0 +1,26 @@
+{
+  "id": "@ai-workbench/workbench-toolbridge",
+  "name": "AI Workbench Toolbridge",
+  "npm": "@ai-workbench/workbench-toolbridge",
+  "version": "0.1.1",
+  "channels": [
+    "dsh",
+    "hanamesh-client"
+  ],
+  "categories": [],
+  "description": {
+    "en": "Includes the tool bridge so Claude/Codex on the host can call tools configured in DSH; install either this package or the variant without the tool bridge.",
+    "zh": "含工具桥：主机上的 Claude/Codex 可调用你在 DSH 里配置的工具；与不含工具桥的版本二选一安装。"
+  },
+  "publisher": {
+    "name": "snstotz"
+  },
+  "sourceUrl": "https://www.npmjs.com/package/@ai-workbench/workbench-toolbridge",
+  "status": "listed",
+  "review": {
+    "reviewedAt": "2026-10-27T19:20:25Z",
+    "rulesVersion": "1",
+    "label": "unverified",
+    "notes": "initial migration"
+  }
+}

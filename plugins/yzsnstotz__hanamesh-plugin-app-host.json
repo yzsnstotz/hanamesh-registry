@@ -1,0 +1,30 @@
+{
+  "id": "yzsnstotz/hanamesh-plugin-app-host",
+  "name": "HanaMesh App Host",
+  "repository": "https://github.com/yzsnstotz/hanamesh-plugin-app-host",
+  "npm": "@hanamesh/dsh-app-host",
+  "version": "0.6.16",
+  "channels": [
+    "dsh",
+    "hanamesh-client"
+  ],
+  "categories": [
+    "hanamesh-plugin"
+  ],
+  "description": {
+    "en": "Portable Hana application host.",
+    "zh": "可移植 Hana 应用宿主。"
+  },
+  "publisher": {
+    "name": "HanaMesh",
+    "url": "https://hanamesh.com"
+  },
+  "sourceUrl": "https://github.com/yzsnstotz/hanamesh-plugin-app-host#readme",
+  "status": "listed",
+  "review": {
+    "reviewedAt": "2026-10-27T19:20:25Z",
+    "rulesVersion": "1",
+    "label": "source-verified",
+    "notes": "initial migration"
+  }
+}

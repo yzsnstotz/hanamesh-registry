@@ -1,0 +1,30 @@
+{
+  "id": "yzsnstotz/hanamesh-usage",
+  "name": "HanaMesh Usage",
+  "repository": "https://github.com/yzsnstotz/hanamesh-usage",
+  "npm": "@hanamesh/usage",
+  "version": "0.3.0-rc.7",
+  "channels": [
+    "dsh",
+    "hanamesh-client"
+  ],
+  "categories": [
+    "hanamesh-plugin"
+  ],
+  "description": {
+    "en": "Consent-based Hana usage records.",
+    "zh": "基于同意的 Hana 使用记录。"
+  },
+  "publisher": {
+    "name": "HanaMesh",
+    "url": "https://hanamesh.com"
+  },
+  "sourceUrl": "https://github.com/yzsnstotz/hanamesh-usage#readme",
+  "status": "listed",
+  "review": {
+    "reviewedAt": "2026-10-27T19:20:25Z",
+    "rulesVersion": "1",
+    "label": "source-verified",
+    "notes": "initial migration"
+  }
+}
