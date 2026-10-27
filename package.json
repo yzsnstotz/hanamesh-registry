@@ -1,0 +1,13 @@
+{
+  "name": "hanamesh-registry",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "24.13.1" },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "check": "node tools/check-all.mjs"
+  },
+  "dependencies": {
+    "ajv": "8.17.1"
+  }
+}
