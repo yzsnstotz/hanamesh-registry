@@ -1,9 +1,11 @@
 #!/usr/bin/env node
-// Deterministic basic checks R1-R9 for one registry entry. Network goes only to
+// Deterministic basic checks R1-R8 for one registry entry. HTTP goes only to
 // registry.npmjs.org and raw.githubusercontent.com (no GitHub REST quota), never follows
-// redirects, and reads at most MAX_BYTES per response.
+// redirects, and reads at most MAX_BYTES per response. The R3 forward-ref check uses the git
+// protocol on github.com (one filtered fetch, no REST).
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync, realpathSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
@@ -13,18 +15,15 @@ const TIMEOUT_MS = 20_000;
 const MAX_BYTES = 2 * 1024 * 1024;
 const ALLOWED_HOSTS = new Set(['registry.npmjs.org', 'raw.githubusercontent.com']);
 const MARKETPLACE_PATH = { claude: '.claude-plugin/marketplace.json', codex: '.agents/plugins/marketplace.json' };
-// Namespaces and categories that only HanaMesh's own entries use; new entries using them go to the owner.
-const RESERVED_PREFIXES = ['yzsnstotz/', '@hanamesh/', '@ai-workbench/'];
-const RESERVED_CATEGORIES = new Set(['hanamesh-plugin', 'hanamesh-app']);
 // Fields an existing entry may change without owner review (status/delistReason are R8).
-// version may only move forward; review is R7; status (with delistReason) is R8.
+// version may only move forward; review is R7; status (with delistReason) is R8;
+// agentPlugins may only move each ref forward (R3).
 const FREE_FIELDS = new Set(['version', 'latestVersion', 'review', 'status']);
 
-class NetworkError extends Error {}
+export class NetworkError extends Error {}
 
 // Untrusted text (from npm or a marketplace) quoted and truncated before it reaches comments or prompts.
 const q = (value) => (value == null ? 'null' : JSON.stringify(String(value).slice(0, 200)));
-const norm = (value) => String(value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 // Semver precedence (no build metadata; the schema forbids it). Returns <0, 0, >0.
 export function compareSemver(a, b) {
@@ -44,6 +43,29 @@ export function compareSemver(a, b) {
   return 0;
 }
 const owner = (repo) => repo?.split('/')[0] ?? null;
+
+// true when `from` is an ancestor of (or equal to) `to` in github.com/<repo>.
+function gitIsAncestor(repo, from, to) {
+  const dir = mkdtempSync(join(tmpdir(), 'hm-check-ref-'));
+  const run = (args, timeout) => execFileSync('git', ['-C', dir, ...args], { stdio: 'pipe', timeout, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+  try {
+    run(['init', '--bare', '--quiet'], TIMEOUT_MS);
+    try {
+      run(['fetch', '--quiet', '--no-tags', '--filter=tree:0', `https://github.com/${repo}.git`, to], TIMEOUT_MS * 3);
+    } catch (e) {
+      throw new NetworkError(`github.com/${repo} ${to}: ${String(e.stderr ?? e.message).trim().split('\n').at(-1)}`);
+    }
+    try {
+      run(['merge-base', '--is-ancestor', from, to], TIMEOUT_MS);
+      return true;
+    } catch (e) {
+      if (e.status === 1 || e.status === 128) return false;
+      throw e;
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 async function getJson(fetchImpl, url) {
   if (!ALLOWED_HOSTS.has(new URL(url).hostname)) throw new Error(`host not allowed: ${url}`);
@@ -93,7 +115,7 @@ function marketplaceSource(plugin, marketplaceRepository) {
   return { repo, trusted: true };
 }
 
-export async function checkEntry({ path, entry, previous = null, others = [], fetch: fetchImpl = globalThis.fetch }) {
+export async function checkEntry({ path, entry, previous = null, others = [], fetch: fetchImpl = globalThis.fetch, isAncestor = gitIsAncestor }) {
   const findings = [];
   const add = (rule, level, message, action) => findings.push({ rule, level, message, ...(action ? { action } : {}) });
   const reject = (rule, message) => add(rule, 'error', message, 'reject');
@@ -126,26 +148,27 @@ export async function checkEntry({ path, entry, previous = null, others = [], fe
   if (previous) {
     const keys = new Set([...Object.keys(previous), ...Object.keys(entry)]);
     const changed = [...keys].filter((k) => !FREE_FIELDS.has(k) && !isDeepStrictEqual(previous[k], entry[k]));
+    const before = Array.isArray(previous.agentPlugins) ? previous.agentPlugins : [];
+    const after = Array.isArray(entry.agentPlugins) ? entry.agentPlugins : [];
+    const refOnly = changed.includes('agentPlugins') && before.length === after.length &&
+      after.every((a, i) => isDeepStrictEqual({ ...a, ref: undefined }, { ...before[i], ref: undefined }));
+    if (refOnly) {
+      changed.splice(changed.indexOf('agentPlugins'), 1);
+      for (const [i, a] of after.entries()) {
+        if (a.ref === before[i].ref) continue;
+        try {
+          if (!(await isAncestor(a.marketplaceRepository, before[i].ref, a.ref))) escalate('R3', `${a.channel}: ref ${before[i].ref} -> ${a.ref} is not a fast-forward of ${a.marketplaceRepository}`);
+        } catch (e) {
+          if (!(e instanceof NetworkError)) throw e;
+          escalate('R3', `${a.channel}: marketplace unreachable (${q(e.message)})`);
+        }
+      }
+    }
     if (changed.length) escalate('R3', `existing entry changed: ${changed.join(', ')}`);
     if (previous.version && entry.version && compareSemver(entry.version, previous.version) < 0) escalate('R3', `version moved back ${previous.version} -> ${entry.version}`);
   }
 
   const entryRepo = entry.repository ? githubRepoOf(entry.repository) : null;
-
-  // R9 identity and presentation of a new entry
-  if (!previous) {
-    if (entry.npm && entry.id !== entry.npm) escalate('R9', `new entries use the npm name as id (expected ${q(entry.npm)})`);
-    if (!entry.npm && owner(entry.id.toLowerCase()) !== owner(entryRepo)) escalate('R9', 'agent-only id must start with the repository owner');
-    if (RESERVED_PREFIXES.some((p) => entry.id.toLowerCase().startsWith(p) || entry.npm?.toLowerCase().startsWith(p))) escalate('R9', 'reserved HanaMesh namespace');
-    const reserved = entry.categories.filter((c) => RESERVED_CATEGORIES.has(c));
-    if (reserved.length) escalate('R9', `reserved categories: ${reserved.join(', ')}`);
-    const allowed = [entryRepo && `https://github.com/${entryRepo}`, entry.npm && `https://www.npmjs.com/package/${entry.npm}`].filter(Boolean);
-    const onAllowed = (url) => allowed.some((a) => url.toLowerCase() === a.toLowerCase() || url.toLowerCase().startsWith(`${a.toLowerCase()}/`) || url.toLowerCase().startsWith(`${a.toLowerCase()}#`));
-    if (!onAllowed(entry.sourceUrl)) escalate('R9', 'sourceUrl must point at the repository or the npm package page');
-    const claimants = [owner(entryRepo), entry.npm?.startsWith('@') ? entry.npm.slice(1).split('/')[0] : null].filter(Boolean).map(norm);
-    if (!claimants.some((c) => c && norm(entry.publisher.name).includes(c))) escalate('R9', `publisher.name ${q(entry.publisher.name)} does not name the repository owner or npm scope`);
-    if (entry.publisher.url && !(entryRepo && entry.publisher.url.toLowerCase().replace(/\/$/, '') === `https://github.com/${owner(entryRepo)}`)) escalate('R9', 'publisher.url must be the repository owner on GitHub');
-  }
 
   // R4 channel constraints
   const channels = new Set(entry.channels);
@@ -161,9 +184,8 @@ export async function checkEntry({ path, entry, previous = null, others = [], fe
     if (![expectedUrl, `${expectedUrl}.git`].includes(a.marketplaceUrl.toLowerCase())) reject('R4', `marketplaceUrl must be https://github.com/${a.marketplaceRepository}`);
   }
 
-  // R4 the checker cannot prove a ref belongs to the marketplace's own branches (fork networks share
-  // objects), so new or changed agent channels go to the owner until the indexer checks reachability.
-  if (agentPlugins.length && !isDeepStrictEqual(agentPlugins, previous?.agentPlugins)) escalate('R4', 'agent channel added or changed: ref reachability is confirmed by the owner this phase');
+  // R4 a ref that is not on the marketplace's default branch (e.g. a fork commit) is refused by the indexer
+  // (SOURCE_GIT_REF_UNREACHABLE); the checker does not repeat that gate.
 
   // R4 marketplace lookup; feeds R5 for agent-only entries. true = verified, false = contradicts, null = undecidable.
   const agentMatches = [];
@@ -216,7 +238,8 @@ export async function checkEntry({ path, entry, previous = null, others = [], fe
   // R6 install scripts
   const scripts = meta.scripts && typeof meta.scripts === 'object' ? meta.scripts : {};
   const hooks = ['preinstall', 'install', 'postinstall'].filter((k) => typeof scripts[k] === 'string');
-  if (hooks.length) escalate('R6', `install scripts: ${hooks.map((k) => `${k}=${q(scripts[k])}`).join(', ')}`, 'info');
+  // Annotated, never rejected (spec §5.1 item 6).
+  if (hooks.length) add('R6', 'info', `install scripts: ${hooks.map((k) => `${k}=${q(scripts[k])}`).join(', ')}`);
 
   // R5 two-way repository check decides the label
   const npmRepo = githubRepoOf(meta.repository);
@@ -233,7 +256,6 @@ export async function checkEntry({ path, entry, previous = null, others = [], fe
     add('R5', 'info', entryRepo ? `npm repository is ${q(npmRepo)}, entry says ${entryRepo}` : 'no repository declared');
   }
 
-  if (!previous && label !== 'source-verified' && !entry.sourceUrl.toLowerCase().startsWith(`https://www.npmjs.com/package/${entry.npm.toLowerCase()}`)) escalate('R9', 'unverified entries link to their npm package page');
   if (previous?.review?.label && previous.review.label !== label && isDeepStrictEqual({ ...previous, review: undefined }, { ...entry, review: undefined })) escalate('R5', `label changed ${previous.review.label} -> ${label}`);
 
   // R3 npm uniqueness, decided after the label: a verified newcomer against an unverified holder goes to the owner

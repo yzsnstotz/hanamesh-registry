@@ -42,8 +42,10 @@ function fakeFetch({ npm = {}, raw = {} } = {}, seen = []) {
 const npmMeta = (over = {}) => ({ name: '@acme/widget', version: '1.0.0', repository: { type: 'git', url: 'git+https://github.com/acme/widget.git' }, ...over });
 const verifiedNet = { npm: { '@acme/widget/1.0.0': npmMeta() }, raw: { 'acme/widget/HEAD/package.json': { name: '@acme/widget' } } };
 
-function run(e, { previous = null, others = [], net = verifiedNet, path, seen } = {}) {
-  return checkEntry({ path: path ?? `plugins/${fileNameForId(e.id)}`, entry: e, previous, others, fetch: fakeFetch(net, seen) });
+// Fake ancestry for the R3 forward-ref check: `ancestry` maps `from>to` to true/false, or throws for 'net'.
+const noGit = async () => { throw new Error('unexpected ancestry lookup'); };
+function run(e, { previous = null, others = [], net = verifiedNet, path, seen, isAncestor = noGit } = {}) {
+  return checkEntry({ path: path ?? `plugins/${fileNameForId(e.id)}`, entry: e, previous, others, fetch: fakeFetch(net, seen), isAncestor });
 }
 const rules = (r, level) => r.findings.filter((f) => !level || f.level === level).map((f) => f.rule);
 
@@ -206,8 +208,7 @@ test('agent plugin found in marketplace passes', async () => {
   const e = entry({ channels: ['dsh', 'claude'], agentPlugins: [agent()] });
   const net = { ...verifiedNet, raw: { ...verifiedNet.raw, [marketPath()]: { name: 'acme', plugins: [{ name: 'widget', source: { source: 'github', repo: 'acme/widget' } }] } } };
   const r = await run(e, { net });
-  assert.equal(r.verdict, 'escalate');
-  assert.deepEqual(r.findings.map((f) => f.rule), ['R4'], 'only the reachability escalation');
+  assert.deepEqual([r.verdict, r.findings], ['pass', []], 'a new agent channel is not sent to the owner (rules 2)');
   const unchanged = await run(e, { net, previous: e });
   assert.equal(unchanged.verdict, 'pass', 'unchanged agent channel on an existing entry');
 });
@@ -233,11 +234,11 @@ const marketWith = (plugin) => ({ raw: { [marketPath()]: { name: 'acme', plugins
 
 test('agent-only entry verified by its own marketplace', async () => {
   const local = await run(agentOnly({ repository: 'https://github.com/acme/market', sourceUrl: 'https://github.com/acme/market' }), { net: marketWith({ source: './plugins/widget' }) });
-  assert.equal(local.verdict, 'escalate');
+  assert.equal(local.verdict, 'pass');
   assert.equal(local.label, 'source-verified');
   const sameOwner = await run(agentOnly(), { net: marketWith({ source: { source: 'url', url: 'https://github.com/acme/widget.git' } }) });
   assert.equal(sameOwner.label, 'source-verified');
-  assert.deepEqual(sameOwner.findings.map((f) => f.rule), ['R4']);
+  assert.deepEqual(sameOwner.findings, []);
 });
 
 test('agent-only entry cannot borrow a famous repository through its own marketplace', async () => {
@@ -273,10 +274,11 @@ test('one-way repository match is unverified', async () => {
 });
 
 // R6
-test('install script escalates with quoted, truncated text', async () => {
+test('install script is annotated with quoted, truncated text and not rejected or escalated', async () => {
   const net = { ...verifiedNet, npm: { '@acme/widget/1.0.0': npmMeta({ scripts: { postinstall: 'node x.js ' + 'y'.repeat(500) } }) } };
   const r = await run(entry(), { net });
-  assert.equal(r.verdict, 'escalate');
+  assert.equal(r.verdict, 'pass');
+  assert.equal(r.label, 'source-verified');
   const f = r.findings.find((x) => x.rule === 'R6');
   assert.equal(f.level, 'info');
   assert.ok(f.message.length < 260);
@@ -306,8 +308,8 @@ test('status change escalates', async () => {
   assert.ok(rules(r).includes('R8'));
 });
 
-// R9
-test('new entry identity and presentation go to the owner', async () => {
+// R9 was removed in rules 2 (owner 10-30): none of these are rejected or sent to the owner any more.
+test('former R9 identity and presentation checks no longer fire', async () => {
   const cases = [
     entry({ id: 'acme/widget' }),
     entry({ id: '@hanamesh/widget', npm: '@hanamesh/widget' }),
@@ -317,9 +319,9 @@ test('new entry identity and presentation go to the owner', async () => {
   ];
   for (const e of cases) {
     const npm = e.npm === '@acme/widget' ? verifiedNet.npm : { [`${e.npm}/1.0.0`]: npmMeta({ name: e.npm }) };
-    const r = await run(e, { net: { ...verifiedNet, npm } });
-    assert.equal(r.verdict, 'escalate', JSON.stringify(e));
-    assert.ok(rules(r).includes('R9'), JSON.stringify(e));
+    const r = await run(e, { net: { ...verifiedNet, npm }, path: `plugins/${fileNameForId(e.id)}` });
+    assert.equal(r.verdict, 'pass', JSON.stringify(e));
+    assert.ok(!rules(r).includes('R9'), JSON.stringify(e));
   }
 });
 
@@ -353,24 +355,43 @@ test('delistReason on a listed entry is a schema reject, changing it on a delist
   assert.ok(r.findings.some((f) => f.rule === 'R3' && /delistReason/.test(f.message)));
 });
 
-test('publisher name must name the repository owner or npm scope', async () => {
-  const r = await run(entry({ publisher: { name: 'Anthropic' } }));
-  assert.equal(r.verdict, 'escalate');
-  assert.ok(rules(r).includes('R9'));
-  assert.equal((await run(entry({ publisher: { name: 'Acme Inc.' } }))).verdict, 'pass');
-});
-
-test('reserved namespace check ignores case', async () => {
-  const e = entry({ id: '@HANAMESH/widget', npm: '@HANAMESH/widget', publisher: { name: 'hanamesh' } });
-  const r = await run(e, { net: { ...verifiedNet, npm: { '@HANAMESH/widget/1.0.0': npmMeta({ name: '@HANAMESH/widget' }) } } });
-  assert.ok(r.findings.some((f) => f.rule === 'R9' && /reserved/.test(f.message)));
-});
-
-test('unverified new entry must link to its npm page', async () => {
+test('unverified new entry with a repository sourceUrl passes', async () => {
   const r = await run(entry(), { net: { npm: { '@acme/widget/1.0.0': npmMeta({ repository: undefined }) } } });
-  assert.equal(r.label, 'unverified');
+  assert.deepEqual([r.verdict, r.label], ['pass', 'unverified']);
+});
+
+// R3 agentPlugins ref may only move forward (skill bump PRs)
+const NEXT = 'b'.repeat(40);
+const agentEntry = (ref) => entry({ channels: ['dsh', 'claude'], agentPlugins: [agent('claude', { ref })] });
+const agentNet = (ref) => ({ ...verifiedNet, raw: { ...verifiedNet.raw, [`acme/market/${ref}/.claude-plugin/marketplace.json`]: { name: 'acme', plugins: [{ name: 'widget', source: { source: 'github', repo: 'acme/widget' } }] } } });
+test('forward agentPlugins ref with a version bump passes', async () => {
+  const seen = [];
+  const isAncestor = async (repo, from, to) => { seen.push([repo, from, to]); return true; };
+  const net = { ...agentNet(NEXT), npm: { '@acme/widget/1.1.0': npmMeta({ version: '1.1.0' }) } };
+  const r = await run({ ...agentEntry(NEXT), version: '1.1.0' }, { previous: agentEntry(REF), net, isAncestor });
+  assert.deepEqual([r.verdict, r.findings], ['pass', []]);
+  assert.deepEqual(seen, [['acme/market', REF, NEXT]]);
+});
+test('agentPlugins ref that is not a fast-forward escalates', async () => {
+  const r = await run(agentEntry(NEXT), { previous: agentEntry(REF), net: agentNet(NEXT), isAncestor: async () => false });
   assert.equal(r.verdict, 'escalate');
-  assert.ok(r.findings.some((f) => f.rule === 'R9' && /npm package page/.test(f.message)));
+  assert.ok(r.findings.some((f) => f.rule === 'R3' && /not a fast-forward/.test(f.message)));
+});
+test('agentPlugins ref check that cannot reach the marketplace escalates', async () => {
+  const { NetworkError } = await import('../tools/check-entry.mjs');
+  const r = await run(agentEntry(NEXT), { previous: agentEntry(REF), net: agentNet(NEXT), isAncestor: async () => { throw new NetworkError('down'); } });
+  assert.equal(r.verdict, 'escalate');
+  assert.ok(r.findings.some((f) => f.rule === 'R3' && /unreachable/.test(f.message)));
+});
+test('agentPlugins changes beyond the ref still escalate', async () => {
+  for (const e of [
+    entry({ channels: ['dsh', 'claude'], agentPlugins: [agent('claude', { ref: NEXT, pluginName: 'other' })] }),
+    entry({ channels: ['dsh', 'claude', 'codex'], agentPlugins: [agent('claude'), agent('codex')] }),
+  ]) {
+    const r = await run(e, { previous: agentEntry(REF), net: agentNet(NEXT), isAncestor: async () => true });
+    assert.equal(r.verdict, 'escalate', JSON.stringify(e.agentPlugins));
+    assert.ok(r.findings.some((f) => f.rule === 'R3' && /agentPlugins/.test(f.message)));
+  }
 });
 
 test('re-check of an unchanged entry escalates when the label drifts', async () => {
