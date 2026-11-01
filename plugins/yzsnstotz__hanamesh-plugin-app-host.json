@@ -3,7 +3,7 @@
   "name": "HanaMesh App Host",
   "repository": "https://github.com/yzsnstotz/hanamesh-plugin-app-host",
   "npm": "@hanamesh/dsh-app-host",
-  "version": "0.6.16",
+  "version": "0.6.17",
   "channels": [
     "dsh",
     "hanamesh-client"
