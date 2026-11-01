@@ -22,9 +22,9 @@
   "sourceUrl": "https://github.com/yzsnstotz/hanamesh-core#readme",
   "status": "listed",
   "review": {
-    "reviewedAt": "2026-10-27T19:20:25Z",
-    "rulesVersion": "1",
+    "reviewedAt": "2026-11-01T00:01:16Z",
+    "rulesVersion": "2",
     "label": "source-verified",
-    "notes": "initial migration"
+    "notes": "bump 0.3.24 -> 0.3.28; rules hit: none; precedents: none"
   }
 }
