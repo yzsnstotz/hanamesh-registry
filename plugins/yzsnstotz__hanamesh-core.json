@@ -3,7 +3,7 @@
   "name": "HanaMesh Core",
   "repository": "https://github.com/yzsnstotz/hanamesh-core",
   "npm": "@hanamesh/core",
-  "version": "0.3.24",
+  "version": "0.3.28",
   "channels": [
     "dsh",
     "hanamesh-client"
