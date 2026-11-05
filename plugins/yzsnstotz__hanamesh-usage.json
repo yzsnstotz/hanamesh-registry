@@ -22,9 +22,9 @@
   "sourceUrl": "https://github.com/yzsnstotz/hanamesh-usage#readme",
   "status": "listed",
   "review": {
-    "reviewedAt": "2026-11-01T00:02:18Z",
+    "reviewedAt": "2026-11-05T06:42:06Z",
     "rulesVersion": "2",
     "label": "source-verified",
-    "notes": "bump 0.3.0-rc.7 -> 0.3.0-rc.15; rules hit: none; precedents: none"
+    "notes": "rules hit: none; precedents: none"
   }
 }
