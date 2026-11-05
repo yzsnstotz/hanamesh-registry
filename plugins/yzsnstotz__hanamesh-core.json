@@ -3,7 +3,7 @@
   "name": "HanaMesh Core",
   "repository": "https://github.com/yzsnstotz/hanamesh-core",
   "npm": "@hanamesh/core",
-  "version": "0.3.28",
+  "version": "0.3.32",
   "channels": [
     "dsh",
     "hanamesh-client"
@@ -22,9 +22,9 @@
   "sourceUrl": "https://github.com/yzsnstotz/hanamesh-core#readme",
   "status": "listed",
   "review": {
-    "reviewedAt": "2026-11-01T00:01:16Z",
+    "reviewedAt": "2026-11-05T06:40:52Z",
     "rulesVersion": "2",
     "label": "source-verified",
-    "notes": "bump 0.3.24 -> 0.3.28; rules hit: none; precedents: none"
+    "notes": "rules hit: none; precedents: none"
   }
 }
