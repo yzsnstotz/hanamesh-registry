@@ -3,7 +3,7 @@
   "name": "HanaMesh Usage",
   "repository": "https://github.com/yzsnstotz/hanamesh-usage",
   "npm": "@hanamesh/usage",
-  "version": "0.3.0-rc.15",
+  "version": "0.3.0-rc.17",
   "channels": [
     "dsh",
     "hanamesh-client"
