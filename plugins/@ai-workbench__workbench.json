@@ -2,7 +2,7 @@
   "id": "@ai-workbench/workbench",
   "name": "AI Workbench",
   "npm": "@ai-workbench/workbench",
-  "version": "0.1.3",
+  "version": "0.1.6",
   "channels": [
     "dsh",
     "hanamesh-client"
