@@ -3,7 +3,7 @@
   "name": "HanaMesh App Host",
   "repository": "https://github.com/yzsnstotz/hanamesh-plugin-app-host",
   "npm": "@hanamesh/dsh-app-host",
-  "version": "0.6.22",
+  "version": "0.6.25",
   "channels": [
     "dsh",
     "hanamesh-client"
@@ -22,7 +22,7 @@
   "sourceUrl": "https://github.com/yzsnstotz/hanamesh-plugin-app-host#readme",
   "status": "listed",
   "review": {
-    "reviewedAt": "2026-11-05T06:41:04Z",
+    "reviewedAt": "2026-11-10T00:02:24Z",
     "rulesVersion": "2",
     "label": "source-verified",
     "notes": "rules hit: none; precedents: none"
