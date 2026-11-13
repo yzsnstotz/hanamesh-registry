@@ -2,7 +2,7 @@
   "id": "@ai-workbench/workbench-toolbridge",
   "name": "AI Workbench Toolbridge",
   "npm": "@ai-workbench/workbench-toolbridge",
-  "version": "0.1.14",
+  "version": "0.1.21",
   "channels": [
     "dsh",
     "hanamesh-client"
