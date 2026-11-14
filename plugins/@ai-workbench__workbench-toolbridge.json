@@ -2,7 +2,7 @@
   "id": "@ai-workbench/workbench-toolbridge",
   "name": "AI Workbench Toolbridge",
   "npm": "@ai-workbench/workbench-toolbridge",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "channels": [
     "dsh",
     "hanamesh-client"
@@ -18,7 +18,7 @@
   "sourceUrl": "https://www.npmjs.com/package/@ai-workbench/workbench-toolbridge",
   "status": "listed",
   "review": {
-    "reviewedAt": "2026-11-13T00:02:33Z",
+    "reviewedAt": "2026-11-14T00:02:02Z",
     "rulesVersion": "2",
     "label": "unverified",
     "notes": "R5; precedents: none"
