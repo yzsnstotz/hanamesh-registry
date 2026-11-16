@@ -18,9 +18,9 @@
   "sourceUrl": "https://www.npmjs.com/package/@ai-workbench/workbench-toolbridge",
   "status": "listed",
   "review": {
-    "reviewedAt": "2026-11-14T00:02:02Z",
+    "reviewedAt": "2026-11-16T00:01:58Z",
     "rulesVersion": "2",
     "label": "unverified",
-    "notes": "R5; precedents: none"
+    "notes": "R5 — no repository declared; precedents: none"
   }
 }
